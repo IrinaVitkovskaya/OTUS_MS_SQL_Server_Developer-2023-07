@@ -79,14 +79,23 @@ Tailspin Toys (Head Office) | Ribeiroville
 
 */
 
-/*--справочно:
+-- с использованием UNPIVOT
+SELECT *
+	FROM(
+		SELECT CustomerID, CustomerName, DeliveryAddressLine1, DeliveryAddressLine2, PostalAddressLine1, PostalAddressLine2 
+		FROM Sales.Customers
+		Where CustomerName Like '%Tailspin Toys%'	
+		) AS Customers
+	UNPIVOT (AddressLine FOR Name IN (DeliveryAddressLine1, DeliveryAddressLine2, PostalAddressLine1, PostalAddressLine2)) AS unpt;
+
+
+/*
+--Предыдущие версии решения задачи:
+--Найдем названия таблиц и схем в базе данных, где имеется столбец 'DeliveryAddressLine1'.
 SELECT table_schema, table_name 
 FROM information_schema.columns
 WHERE column_name = 'DeliveryAddressLine1';
-*/
-
 -- с использованием pivit
-
 	SELECT
     c.CustomerName,
     u.Address
@@ -98,8 +107,7 @@ WHERE
     c.CustomerName LIKE '%Tailspin Toys%'
 ORDER BY
     CustomerName;
-
-/*-- с использованием оператора UNION
+-- с использованием оператора UNION
 SELECT 
     c.CustomerName,
     c.DeliveryAddressLine1 AS Address
@@ -135,7 +143,7 @@ CountryId | CountryName | Code
 ----------+-------------+-------
 */
 
---unpivot
+--с использованием UNPIVOT
 SELECT CountryID, CountryName, Code AS Code
 FROM (
     SELECT CountryID, CountryName, CAST(IsoAlpha3Code AS NVARCHAR) AS TextAlphaCode, CAST(IsoNumericCode AS NVARCHAR) AS TextNumericCode 
@@ -144,8 +152,8 @@ FROM (
 UNPIVOT (Code FOR Name IN (TextAlphaCode, TextNumericCode)) AS unpt;
 
 /*
+--Предыдущие версии решения задачи:
 -- с использованием оператора UNION
-
 -- символьный код:
 SELECT
     c.CountryID,
@@ -175,14 +183,53 @@ FROM Application.Countries
 4. Выберите по каждому клиенту два самых дорогих товара, которые он покупал.
 В результатах должно быть ид клиета, его название, ид товара, цена, дата покупки.
 */
-/*--справочно:
+WITH WindowFilter AS (
+    SELECT 
+        si.CustomerID, 
+        si.InvoiceDate, 
+        sil.StockItemID, 
+        sil.ExtendedPrice,
+        ROW_NUMBER() OVER (PARTITION BY si.CustomerID ORDER BY sil.ExtendedPrice DESC) AS Number
+    FROM 
+        Sales.Invoices AS si 
+    INNER JOIN 
+        Sales.InvoiceLines AS sil ON si.InvoiceID = sil.InvoiceID
+)
+SELECT 
+    unpvt.CustomerID, 
+    c.CustomerName AS Name_Customer, 
+    unpvt.Name, 
+    CAST(unpvt.Value AS nvarchar) AS Value
+FROM 
+    (
+    SELECT 
+        CustomerID, 
+        StockItemID, 
+        CAST(StockItemID AS nvarchar) AS StockItemIDValue, 
+        InvoiceDate, 
+        CAST(InvoiceDate AS nvarchar) AS InvoiceDateValue, 
+        ExtendedPrice, 
+        CAST(ExtendedPrice AS nvarchar) AS ExtendedPriceValue
+    FROM 
+        WindowFilter
+    WHERE 
+        Number IN (1, 2)
+    ) AS p
+UNPIVOT 
+    (Value FOR Name IN (StockItemIDValue, InvoiceDateValue, ExtendedPriceValue)) AS unpvt
+JOIN 
+    Sales.Customers AS c ON unpvt.CustomerID = c.CustomerID;
+
+/*
+--Предыдущие версии решения задачи:
+--
 SELECT table_schema, table_name 
 FROM information_schema.columns
 WHERE column_name = 'CustomerId';
-
+--
 SELECT *
 FROM Sales.CustomerTransactions
-*/
+--
 SELECT c.CustomerId, c.CustomerName, p.CustomerTransactionId, p.TransactionAmount, p.TransactionDate
 FROM Sales.Customers c
 CROSS APPLY (
