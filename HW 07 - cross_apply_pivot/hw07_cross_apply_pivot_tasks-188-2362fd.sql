@@ -88,45 +88,6 @@ SELECT *
 		) AS Customers
 	UNPIVOT (AddressLine FOR Name IN (DeliveryAddressLine1, DeliveryAddressLine2, PostalAddressLine1, PostalAddressLine2)) AS unpt;
 
-
-/*
---Предыдущие версии решения задачи:
---Найдем названия таблиц и схем в базе данных, где имеется столбец 'DeliveryAddressLine1'.
-SELECT table_schema, table_name 
-FROM information_schema.columns
-WHERE column_name = 'DeliveryAddressLine1';
--- с использованием pivit
-	SELECT
-    c.CustomerName,
-    u.Address
-FROM
-    Sales.Customers c
-CROSS APPLY
-    (VALUES (c.DeliveryAddressLine1), (c.PostalAddressLine1)) as u(Address)
-WHERE
-    c.CustomerName LIKE '%Tailspin Toys%'
-ORDER BY
-    CustomerName;
--- с использованием оператора UNION
-SELECT 
-    c.CustomerName,
-    c.DeliveryAddressLine1 AS Address
-FROM 
-    Sales.Customers c
-WHERE 
-    c.CustomerName LIKE '%Tailspin Toys%'
-UNION
-SELECT 
-    c.CustomerName,
-    c.PostalAddressLine1 AS Address
-FROM 
-    Sales.Customers c
-WHERE 
-    c.CustomerName LIKE '%Tailspin Toys%'
-ORDER BY 
-    CustomerName;
-*/
-
 /*
 3. В таблице стран (Application.Countries) есть поля с цифровым кодом страны и с буквенным.
 Сделайте выборку ИД страны, названия и ее кода так, 
@@ -152,90 +113,29 @@ FROM (
 UNPIVOT (Code FOR Name IN (TextAlphaCode, TextNumericCode)) AS unpt;
 
 /*
---Предыдущие версии решения задачи:
--- с использованием оператора UNION
--- символьный код:
-SELECT
-    c.CountryID,
-    c.CountryName,
-    CASE
-        WHEN ISNUMERIC(c.IsoAlpha3Code) = 1 THEN CAST(c.IsoAlpha3Code AS VARCHAR(10))
-        ELSE c.IsoAlpha3Code
-    END AS Code
-FROM
-    Application.Countries c
-ORDER BY
-    c.CountryID;
--- символьный + числовой код через запятую:
-SELECT CountryId, CountryName, 
-       Concat(IsoAlpha3Code, ', ', IsoNumericCode) AS Code
-FROM Application.Countries
---символьный + числовой код:
-SELECT CountryId, CountryName, IsoAlpha3Code AS Code
-FROM Application.Countries
-
-UNION
-
-SELECT CountryId, CountryName, CAST(IsoNumericCode AS NVARCHAR(50)) AS Code
-FROM Application.Countries
-*/
-/*
 4. Выберите по каждому клиенту два самых дорогих товара, которые он покупал.
 В результатах должно быть ид клиета, его название, ид товара, цена, дата покупки.
 */
-WITH WindowFilter AS (
-    SELECT 
-        si.CustomerID, 
-        si.InvoiceDate, 
-        sil.StockItemID, 
-        sil.ExtendedPrice,
-        ROW_NUMBER() OVER (PARTITION BY si.CustomerID ORDER BY sil.ExtendedPrice DESC) AS Number
-    FROM 
-        Sales.Invoices AS si 
-    INNER JOIN 
-        Sales.InvoiceLines AS sil ON si.InvoiceID = sil.InvoiceID
-)
-SELECT 
-    unpvt.CustomerID, 
-    c.CustomerName AS Name_Customer, 
-    unpvt.Name, 
-    CAST(unpvt.Value AS nvarchar) AS Value
-FROM 
-    (
-    SELECT 
-        CustomerID, 
-        StockItemID, 
-        CAST(StockItemID AS nvarchar) AS StockItemIDValue, 
-        InvoiceDate, 
-        CAST(InvoiceDate AS nvarchar) AS InvoiceDateValue, 
-        ExtendedPrice, 
-        CAST(ExtendedPrice AS nvarchar) AS ExtendedPriceValue
-    FROM 
-        WindowFilter
-    WHERE 
-        Number IN (1, 2)
-    ) AS p
-UNPIVOT 
-    (Value FOR Name IN (StockItemIDValue, InvoiceDateValue, ExtendedPriceValue)) AS unpvt
-JOIN 
-    Sales.Customers AS c ON unpvt.CustomerID = c.CustomerID;
 
-/*
---Предыдущие версии решения задачи:
---
-SELECT table_schema, table_name 
-FROM information_schema.columns
-WHERE column_name = 'CustomerId';
---
-SELECT *
-FROM Sales.CustomerTransactions
---
-SELECT c.CustomerId, c.CustomerName, p.CustomerTransactionId, p.TransactionAmount, p.TransactionDate
-FROM Sales.Customers c
-CROSS APPLY (
-    SELECT TOP 2 CustomerTransactionId, TransactionAmount, TransactionDate
-    FROM Sales.CustomerTransactions p
-    WHERE p.CustomerId = c.CustomerId
-    ORDER BY TransactionAmount DESC
-) p
-ORDER BY p.TransactionAmount DESC
+SELECT
+    c.CustomerID as ид_клиета,
+    c.CustomerName as название_клиета,
+    p.CustomerTransactionId as ид_товара,
+    p.TransactionAmount as цена,
+    p.TransactionDate as дата_покупки
+FROM
+    Sales.Customers c
+    CROSS APPLY (
+        SELECT TOP 2
+            CustomerTransactionId,
+            TransactionAmount,
+            TransactionDate
+        FROM
+            Sales.CustomerTransactions p
+        WHERE
+            p.CustomerId = c.CustomerId
+        ORDER BY
+            TransactionAmount DESC
+    ) p
+ORDER BY
+    p.TransactionAmount DESC;
