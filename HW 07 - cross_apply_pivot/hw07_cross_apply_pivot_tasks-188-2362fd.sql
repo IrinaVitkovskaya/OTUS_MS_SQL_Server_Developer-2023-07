@@ -117,25 +117,62 @@ UNPIVOT (Code FOR Name IN (TextAlphaCode, TextNumericCode)) AS unpt;
 В результатах должно быть ид клиета, его название, ид товара, цена, дата покупки.
 */
 
+-- Осуществляется выборка информации о клиентах (CustomerID, CustomerName) и связанных с ними данными о счетах (InvoiceDate) и позициях счетов (UnitPrice, StockItemID).
+-- Это производится с использованием JOIN и APPLY для связывания нескольких таблиц и выбора двух самых дорогих товаров для каждого клиента с помощью подзапроса и оператора TOP 2.
+Select
+    Customers.CustomerID,
+    Customers.CustomerName,
+    ap.InvoiceDate,
+    ap.UnitPrice,
+    ap.StockItemID
+from Sales.Customers as Customers
+cross apply ( 
+SELECT Top 2
+        InvoiceDate AS InvoiceDate,
+        UnitPrice as UnitPrice,
+        Invoices.CustomerID,
+        InvoiceLines.StockItemID
+    FROM [WideWorldImporters].[Sales].[InvoiceLines] as InvoiceLines
+        join Sales.Invoices as Invoices on
+  InvoiceLines.InvoiceID = Invoices.InvoiceID
+
+    where Invoices.CustomerID = Customers.CustomerID
+    order by UnitPrice desc ) ap
+
+-- Создается динамический запрос (хранящийся в переменной @dml), который формирует сводную таблицу.
+-- Построение сводной таблицы выполняется с помощью оператора PIVOT, который суммирует данные по стоимости каждого клиента для каждого месяца (InvoiceMonth).
+-- Для каждого клиента генерируется столбец с использованием ISNULL и динамической конкатенации имен столбцов.
+-- Запрос сортируется по месяцу (InvoiceMonth).
+DECLARE @dml AS NVARCHAR(MAX)
+DECLARE @ColumnNameSelect AS NVARCHAR(MAX)
+DECLARE @ColumnNameFor AS NVARCHAR(MAX)
+
 SELECT
-    c.CustomerID as ид_клиета,
-    c.CustomerName as название_клиета,
-    p.CustomerTransactionId as ид_товара,
-    p.TransactionAmount as цена,
-    p.TransactionDate as дата_покупки
-FROM
-    Sales.Customers c
-    CROSS APPLY (
-        SELECT TOP 2
-            CustomerTransactionId,
-            TransactionAmount,
-            TransactionDate
-        FROM
-            Sales.CustomerTransactions p
-        WHERE
-            p.CustomerId = c.CustomerId
-        ORDER BY
-            TransactionAmount DESC
-    ) p
-ORDER BY
-    p.TransactionAmount DESC;
+    @ColumnNameSelect= ISNULL(@ColumnNameSelect + ',','') +  'IsNULL([' + Cast (Customers.CustomerID as nvarchar) + '],0) as [' + TRIM(REPLACE(REPLACE(REPLACE(Customers.CustomerName, '(',''),')',''),'Tailspin Toys','')) + ']',
+    @ColumnNameFor = ISNULL(@ColumnNameFor + ',','') +  '[' + Cast (Customers.CustomerID as nvarchar) + ']'
+
+FROM Sales.Customers as Customers
+
+Where
+  Customers.CustomerID >=1 AND Customers.CustomerID <=6
+
+SET @dml = 'Select
+    InvoiceMonth,' + @ColumnNameSelect + '
+	from (SELECT
+      convert(varchar,  CAST(DATEADD(mm,DATEDIFF(mm,0,InvoiceDate),0) AS DATE), 4) AS InvoiceMonth,
+        Quantity * UnitPrice as sum,
+        Invoices.CustomerID
+
+    FROM [WideWorldImporters].[Sales].[InvoiceLines] as InvoiceLines
+        join Sales.Invoices as Invoices on
+  InvoiceLines.InvoiceID = Invoices.InvoiceID
+    where
+  Invoices.CustomerID >=1 AND Invoices.CustomerID <=6  
+  ) as SalesMonth
+  PIVOT(sum(SalesMonth.Sum)
+FOR SalesMonth.CustomerID
+IN (' + @ColumnNameFor + ')) AS SalesResult
+Order by
+InvoiceMonth;'
+-- На выполнение передается динамический запрос с помощью процедуры sp_executesql.
+EXEC sp_executesql @dml
