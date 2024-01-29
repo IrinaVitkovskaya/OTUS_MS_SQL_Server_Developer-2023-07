@@ -1,78 +1,182 @@
-/*
-РЎРѕР·РґР°РЅРёРµ РѕС‡РµСЂРµРґРё РІ Р‘Р” РґР»СЏ С„РѕРЅРѕРІРѕР№ РѕР±СЂР°Р±РѕС‚РєРё Р·Р°РґР°С‡Рё РІ Р‘Р”.
-РџРѕРґСѓРјР°Р№С‚Рµ Рё СЂРµР°Р»РёР·СѓР№С‚Рµ РѕС‡РµСЂРµРґСЊ РІ СЂР°РјРєР°С… СЃРІРѕРµРіРѕ РїСЂРѕРµРєС‚Р°.
-Р•СЃР»Рё РІ РІР°С€РµРј РїСЂРѕРµРєС‚Рµ РЅРµС‚ Р·Р°РґР°С‡Рё, РєРѕС‚РѕСЂР°СЏ РїРѕРґС…РѕРґРёС‚ РїРѕРґ СЂРµР°Р»РёР·Р°С†РёСЋ С‡РµСЂРµР· РѕС‡РµСЂРµРґСЊ, С‚Рѕ РІ РєР°С‡РµСЃС‚РІРµ Р”Р—:
-Р РµР°Р»РёР·СѓР№С‚Рµ РѕС‡РµСЂРµРґСЊ РґР»СЏ Р‘Р” WideWorldImporters:
+-- В данном скрипте SQL происходит настройка системы обмена сообщениями в базе данных "WideWorldImporters". 
+-- Скрипт включает брокера сообщений, создает типы сообщений и контракт, а также создает очереди и сервисы для обмена сообщениями. 
+-- Скрипт создает таблицу для хранения отчетов и две хранимые процедуры для формирования запросов и создания отчетов на основе полученных данных.
 
-1.РЎРѕР·РґР°Р№С‚Рµ РѕС‡РµСЂРµРґСЊ РґР»СЏ С„РѕСЂРјРёСЂРѕРІР°РЅРёСЏ РѕС‚С‡РµС‚РѕРІ РґР»СЏ РєР»РёРµРЅС‚РѕРІ РїРѕ С‚Р°Р±Р»РёС†Рµ Invoices. РџСЂРё РІС‹Р·РѕРІРµ РїСЂРѕС†РµРґСѓСЂС‹ РґР»СЏ СЃРѕР·РґР°РЅРёСЏ РѕС‚С‡РµС‚Р° РІ РѕС‡РµСЂРµРґСЊ РґРѕР»Р¶РЅР° РѕС‚РїСЂР°РІР»СЏС‚СЊСЃСЏ Р·Р°СЏРІРєР°.
-2.РџСЂРё РѕР±СЂР°Р±РѕС‚РєРµ РѕС‡РµСЂРµРґРё СЃРѕР·РґР°РІР°Р№С‚Рµ РѕС‚С‡РµС‚ РїРѕ РєРѕР»РёС‡РµСЃС‚РІСѓ Р·Р°РєР°Р·РѕРІ (Orders) РїРѕ РєР»РёРµРЅС‚Сѓ Р·Р° Р·Р°РґР°РЅРЅС‹Р№ РїРµСЂРёРѕРґ РІСЂРµРјРµРЅРё Рё СЃРєР»Р°РґС‹РІР°Р№С‚Рµ РіРѕС‚РѕРІС‹Р№ РѕС‚С‡РµС‚ РІ РЅРѕРІСѓСЋ С‚Р°Р±Р»РёС†Сѓ.
-3.РџСЂРѕРІРµСЂСЊС‚Рµ, С‡С‚Рѕ РІС‹ РєРѕСЂСЂРµРєС‚РЅРѕ РѕС‚РєСЂС‹РІР°РµС‚Рµ Рё Р·Р°РєСЂС‹РІР°РµС‚Рµ РґРёР°Р»РѕРіРё Рё Сѓ РЅР°СЃ РѕРЅРё РЅРµ РєРѕРїСЏС‚СЃСЏ.
-*/
--- РЈРґР°Р»СЏРµРј СѓР¶Рµ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёРµ С…СЂР°РЅРёРјС‹Рµ РїСЂРѕС†РµРґСѓСЂС‹, РµСЃР»Рё РѕРЅРё РµСЃС‚СЊ:
-IF EXISTS (SELECT 1 FROM sys.procedures WHERE name = 'AddReportToQueue')
-    DROP PROCEDURE AddReportToQueue;
-IF EXISTS (SELECT 1 FROM sys.procedures WHERE name = 'ProcessReportQueue')
-    DROP PROCEDURE ProcessReportQueue;
+-- 1. Включение брокера сообщений для базы данных "WideWorldImporters". 
+-- Сначала устанавливается односеансный режим подключения к базе данных и отменяются все активные транзакции. 
+-- Затем включается брокер сообщений, и в конце устанавливается многопользовательский режим подключения.
+ALTER DATABASE [WideWorldImporters] SET SINGLE_USER WITH ROLLBACK IMMEDIATE
+ALTER DATABASE [WideWorldImporters] SET ENABLE_BROKER
+ALTER DATABASE [WideWorldImporters] SET MULTI_USER
 
--- РЎРѕР·РґР°РµРј С‚Р°Р±Р»РёС†С‹ QueueReports Рё ReportResults, РµСЃР»Рё РѕРЅРё РµС‰Рµ РЅРµ СЃРѕР·РґР°РЅС‹:
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'QueueReports')
-BEGIN
-    CREATE TABLE QueueReports (
-        ReportID INT IDENTITY(1,1) PRIMARY KEY,
-        CustomerID INT,
-        StartDate DATE,
-        EndDate DATE,
-        Status VARCHAR(10) DEFAULT 'Pending'
-    );
-END;
+-- 2. Создание типов сообщений
+-- В этой части кода создаются два типа сообщений: "//WWI/Report/RequestMessage" и "//WWI/Report/ReplyMessage". 
+-- Каждый тип сообщения имеет валидацию в формате WELL_FORMED_XML.
+USE WideWorldImporters
+-- Для запроса
+CREATE MESSAGE TYPE
+[//WWI/Report/RequestMessage]
+VALIDATION=WELL_FORMED_XML;
+-- Для ответа
+CREATE MESSAGE TYPE
+[//WWI/Report/ReplyMessage]
+VALIDATION=WELL_FORMED_XML; 
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ReportResults')
-BEGIN
-    CREATE TABLE ReportResults (
-        ReportID INT,
-        CustomerID INT,
-        OrdersCount INT,
-        ReportDate DATETIME,
-        FOREIGN KEY (ReportID) REFERENCES QueueReports(ReportID)
-    );
-END;
+GO
 
--- РҐСЂР°РЅРёРјР°СЏ РїСЂРѕС†РµРґСѓСЂР° AddReportToQueue:
-CREATE PROCEDURE AddReportToQueue
-    @CustomerID INT,
-    @StartDate DATE,
-    @EndDate DATE
+-- 3. Создание контракта
+-- В этой части кода создается контракт "//WWI/Report/Contract", который определяет типы сообщений, отправляемые и принимаемые в рамках контракта. 
+-- Контракт указывает, что тип сообщения "//WWI/Report/RequestMessage" отправляется инициатором, а тип сообщения "//WWI/Report/ReplyMessage" отправляется целью.
+CREATE CONTRACT [//WWI/Report/Contract]
+      ([//WWI/Report/RequestMessage] SENT BY INITIATOR,
+       [//WWI/Report/ReplyMessage] SENT BY TARGET
+      );
+GO
+
+
+-- 4. Создание очередей и сервисов
+-- В этой части кода создаются две очереди: "TargetReportQueueWWI" и "InitiatorReportQueueWWI". 
+-- Каждая очередь связывается с соответствующим сервисом, который использует созданный контракт "//WWI/Report/Contract".
+
+-- Первая очередь:
+CREATE QUEUE TargetReportQueueWWI;
+
+CREATE SERVICE [//WWI/Report/TargetService]
+       ON QUEUE TargetReportQueueWWI
+       ([//WWI/Report/Contract]);
+GO
+
+-- Вторая очередь:
+CREATE QUEUE InitiatorReportQueueWWI;
+
+CREATE SERVICE [//WWI/Report/InitiatorService]
+       ON QUEUE InitiatorReportQueueWWI
+       ([//WWI/Report/Contract]);
+GO
+
+
+-- 5. Создание таблицы для хранения отчетов
+-- В этой части кода создается таблица "Reports" с двумя столбцами: "id" (первичный ключ) и "xml_data" (XML-данные отчета). 
+-- Эта таблица будет использоваться для хранения сформированных отчетов.
+CREATE TABLE Reports
+(
+  id INT PRIMARY KEY IDENTITY(1,1),
+  xml_data XML NOT NULL,
+);
+
+
+-- 6. Создание хранимой процедуры формирования заявки для создания нового отчета
+-- В этой части кода создается хранимая процедура "GetReport", которая принимает три параметра: "CustomerID", "BeginDate" и "EndDate". 
+-- Внутри процедуры формируется XML-запрос на основе переданных параметров, инициируется диалог между инициатором ("InitiatorService") и целью ("TargetService") с помощью контракта "//WWI/Report/Contract", и запрос отправляется в очередь для создания отчета.
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE GetReport
+  @CustomerID INT,
+  @BeginDate date,
+  @EndDate date
 AS
 BEGIN
-    INSERT INTO QueueReports (CustomerID, StartDate, EndDate)
-    VALUES (@CustomerID, @StartDate, @EndDate);
-END;
+  SET NOCOUNT ON;
+  DECLARE @InitDlgHandle UNIQUEIDENTIFIER;
+  DECLARE @RequestMessage NVARCHAR(4000);
 
--- РҐСЂР°РЅРёРјР°СЏ РїСЂРѕС†РµРґСѓСЂР° ProcessReportQueue:
-CREATE PROCEDURE ProcessReportQueue
+  BEGIN TRAN
+
+  SELECT @RequestMessage = (SELECT  @CustomerID as CustomerID, @BeginDate  as BeginDate, @EndDate as EndDate from [Sales].[Customers] Where CustomerID= @CustomerID 
+    FOR XML AUTO, root('RequestMessage'));
+
+  BEGIN DIALOG @InitDlgHandle
+  FROM SERVICE
+  [//WWI/Report/InitiatorService]
+  TO SERVICE
+  '//WWI/Report/TargetService'
+  ON CONTRACT
+  [//WWI/Report/Contract]
+  WITH ENCRYPTION=OFF;
+
+  SEND ON CONVERSATION @InitDlgHandle 
+  MESSAGE TYPE
+  [//WWI/Report/RequestMessage]
+  (@RequestMessage);
+
+  SELECT @RequestMessage AS SentRequestMessage;
+
+  COMMIT TRAN
+END
+GO
+
+
+-- 7. Создание хранимой процедуры обработки очереди TargetReportQueueWWI (создания отчетов)
+-- В этой части кода создается хранимая процедура "CreateReport", которая обрабатывает очередь "TargetReportQueueWWI" и создает отчеты на основе полученных данных из запроса. 
+-- Процедура извлекает сообщение из очереди, извлекает данные о клиенте, начальной и конечной дате из XML-сообщения, создает отчет на основе этих данных и отправляет ответное сообщение в очередь.
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[CreateReport]
 AS
 BEGIN
-    DECLARE @ReportID INT, @CustomerID INT, @StartDate DATE, @EndDate DATE;
 
-    -- РР·РІР»РµС‡РµРЅРёРµ Р·Р°СЏРІРѕРє РёР· РѕС‡РµСЂРµРґРё
-    WHILE EXISTS (SELECT 1 FROM QueueReports WHERE Status = 'Pending')
-    BEGIN
-        -- РџРѕР»СѓС‡РµРЅРёРµ РїРµСЂРІРѕР№ Р·Р°СЏРІРєРё РёР· РѕС‡РµСЂРµРґРё
-        SELECT TOP 1 @ReportID = ReportID, @CustomerID = CustomerID, @StartDate = StartDate, @EndDate = EndDate
-        FROM QueueReports
-        WHERE Status = 'Pending'
-        ORDER BY ReportID;
+  DECLARE @TargetDlgHandle UNIQUEIDENTIFIER,
+      @Message NVARCHAR(4000),
+      @MessageType Sysname,
+      @ReplyMessage NVARCHAR(4000),
+      @CustomerID INT,
+      @BeginDate date,
+      @EndDate date,
+      @xml XML;
 
-        -- РЎРѕР·РґР°РЅРёРµ РѕС‚С‡РµС‚Р° Рё СЃРѕС…СЂР°РЅРµРЅРёРµ РµРіРѕ РІ РЅРѕРІСѓСЋ С‚Р°Р±Р»РёС†Сѓ
-        INSERT INTO ReportResults (ReportID, CustomerID, OrdersCount, ReportDate)
-        SELECT @ReportID, @CustomerID, COUNT(*), GETDATE()
-        FROM Sales.Orders
-        WHERE CustomerID = @CustomerID AND OrderDate BETWEEN @StartDate AND @EndDate
-        GROUP BY CustomerID;
+  BEGIN TRAN;
 
-        -- РћР±РЅРѕРІР»РµРЅРёРµ СЃС‚Р°С‚СѓСЃР° Р·Р°СЏРІРєРё РЅР° "РћР±СЂР°Р±РѕС‚Р°РЅР°"
-        UPDATE QueueReports
-        SET Status = 'Processed'
-        WHERE ReportID = @ReportID;
-    END;
-END;
+  RECEIVE TOP(1)
+    @TargetDlgHandle = Conversation_Handle,
+    @Message = Message_Body,
+    @MessageType = Message_Type_Name
+  FROM dbo.TargetReportQueueWWI;
+
+  SELECT @Message;
+
+  SET @xml = CAST(@Message AS XML);
+
+  SELECT
+    @CustomerID = R.Iv.value('@CustomerID','INT'),
+    @BeginDate = R.Iv.value('@BeginDate','DATE'),
+    @EndDate = R.Iv.value('@EndDate','DATE')
+  FROM @xml.nodes('/RequestMessage/Sales.Customers') as R(Iv);
+
+  Select 
+   @CustomerID as CustomerID,
+    @BeginDate  as CustomerID,
+   @EndDate  as EndDate 
+
+
+  IF @MessageType=N'//WWI/Report/RequestMessage'
+  BEGIN
+
+
+    SELECT @ReplyMessage = (SELECT
+        CustomerID as CustomerID,
+        count(*) as Count
+      FROM [WideWorldImporters].[Sales].[Orders]
+      Where
+        CustomerID = @CustomerID
+        AND OrderDate between @BeginDate AND @EndDate
+      Group By
+        CustomerID
+      FOR XML AUTO, root('Report'));
+
+
+    SEND ON CONVERSATION @TargetDlgHandle
+    MESSAGE TYPE
+    [//WWI/Report/ReplyMessage]
+    (@ReplyMessage);
+    END CONVERSATION @TargetDlgHandle;
+  END
+
+  SELECT @ReplyMessage AS SentReplyMessage;
+
+
+ COMMIT TRAN;
+
+END
